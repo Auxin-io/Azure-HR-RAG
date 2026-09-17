@@ -130,6 +130,41 @@ retrieved chunk the answer came from.
 Agents → `docintel-hr-agent` → Save as new agent → Playground. The vector
 store appears under the agent's *Knowledge*.
 
+**After migrating.** "Save as new agent" copies the agent into the versioned
+agent API; from then on the copy is independent of the classic one the script
+created. The portal also adds a `web_search` tool to the copy, which can let
+gpt-4.1-mini answer from the web instead of the model - remove it in the
+portal or run the script below, which also does that. Whenever you change
+`INSTRUCTIONS` in `rag/create_agent.py`, push them to the migrated copy with:
+
+```bash
+MSYS_NO_PATHCONV=1 PYTHONIOENCODING=utf-8 .venv/Scripts/python rag/publish_version.py
+```
+
+It publishes a new version (`docintel-hr-agent:2`, `:3`, ...) with the same model and
+tools; the playground and Copilot pick up the latest version automatically.
+
+---
+
+## Step 3 — publish to Microsoft 365 Copilot (optional)
+
+In the migrated agent click **Publish → Teams and Microsoft 365**, fill in the
+descriptions, keep the generated bot name, and finish. This creates an Azure
+Bot Service (free F0) and a service principal named
+`<ai-services-account>-docintel-finance-docintel-hr-agent-AgentIdentity` that the bot
+runs as. That identity has no roles until you grant them:
+
+```bash
+AIS=$(az cognitiveservices account list -g docintel-ml-rg --query "[?kind=='AIServices'].id | [0]" -o tsv)
+AGENT_SP=$(az ad sp list --display-name "$(basename $AIS)-docintel-finance-docintel-hr-agent-AgentIdentity" --query "[0].id" -o tsv)
+MSYS_NO_PATHCONV=1 az role assignment create --assignee-object-id $AGENT_SP --assignee-principal-type ServicePrincipal \
+  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d --scope $AIS   # Azure AI User / Foundry User
+```
+
+Until the roles propagate (a few minutes) the agent appears in Copilot but
+replies with nothing. Then: https://copilot.microsoft.com → Agents →
+`docintel-hr-agent` → new chat.
+
 ---
 
 ## How it differs from the other two tracks
@@ -173,6 +208,7 @@ EOF
 rag/
   fetch_documents.py    Blob -> data/hr/
   create_agent.py       vector store + agent + test
+  publish_version.py    pushes new INSTRUCTIONS to the migrated (versioned) agent
   requirements.txt
 data/hr/                the ten OCR texts (gitignored)
 ```
