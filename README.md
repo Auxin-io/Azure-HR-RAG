@@ -22,6 +22,28 @@ This is the third of three ways the project gives a model knowledge:
 
 ---
 
+## Azure services used
+
+No training compute and no endpoint: this track is the AI Services account
+and Blob Storage only.
+
+| Service | What it does in this project |
+|---|---|
+| **Blob Storage** (ingestion account) | holds the OCR'd HR texts under `curated/documents/doc-hr-*.txt` |
+| **Document Intelligence** | produced those texts from the generated PDFs (ingestion repo) |
+| **Entra ID** | your identity reads the container (Storage Blob Data Contributor) and calls the agents API (Foundry User) |
+| **AI Services account** | hosts the model deployment, the project and the vector store |
+| **Azure OpenAI deployment `gpt-4.1-mini`** | reads the retrieved chunks and writes the answer with a citation |
+| **Foundry project `docintel-finance`** | hosts `docintel-hr-agent` |
+| **Foundry files + vector store `hr-documents`** | the ten texts uploaded; Foundry chunks, embeds and indexes them (managed RAG store) |
+| **Foundry `file_search` tool** | embeds the question, retrieves the matching chunks, feeds them to the model |
+| **Azure Bot Service** (optional, created by Publish) | exposes the agent in Microsoft 365 Copilot |
+
+Not used, on purpose: Azure AI Search (the managed vector store is enough for
+ten documents), Azure ML, any endpoint.
+
+---
+
 ## Prerequisites
 
 - The ingestion repo has run (`run_all.sh`), so `curated/documents/doc-hr-*.txt`
