@@ -24,51 +24,9 @@ This is the third of three ways the project gives a model knowledge:
 
 ## Workflow diagram
 
-Source of truth: [Lucid page](https://lucid.app/lucidchart/ea992a4c-6424-4793-a94e-5d7fd2ea7384/edit?page=d-_udOBxIjFA) (same diagram, editable). The Mermaid copy below renders on GitHub.
+The diagram below shows the workflow of the project.
 
-```mermaid
-flowchart LR
-    USER["HR user"] --> PLAY["Foundry playground / M365 Copilot"]
-
-    subgraph Ingest["Azure RG: docintel-ingest-rg"]
-        PDF["Generated PDFs<br/>10 HR docs<br/>policies + leave requests"]
-        BLOB["Blob Storage<br/>raw / curated"]
-        DI["Document Intelligence<br/>prebuilt-read"]
-        TXT["OCR texts<br/>curated/documents/doc-hr-001..010.txt"]
-        PDF --> BLOB --> DI --> TXT
-    end
-
-    subgraph Local["Azure-HR-RAG repo"]
-        FETCH["rag/fetch_documents.py<br/>Entra identity, Blob Data Reader"]
-        CREATE["rag/create_agent.py"]
-    end
-
-    subgraph Azure["Azure RG: docintel-ml-rg"]
-        subgraph AIS["AI Services account"]
-            GPT["gpt-4.1-mini deployment"]
-            subgraph PROJECT["Foundry project: docintel-finance"]
-                FILES["Uploaded files<br/>purpose = agents"]
-                VS["Vector store hr-documents<br/>chunk -> embed -> index<br/>managed by Foundry"]
-                AGENT["docintel-hr-agent"]
-                FS["file_search tool"]
-            end
-        end
-    end
-
-    TXT --> FETCH --> CREATE
-    CREATE --> FILES --> VS
-    CREATE --> AGENT
-    AGENT --> FS
-    FS --> VS
-
-    PLAY --> AGENT
-    AGENT -->|"question + retrieved chunks"| GPT
-    GPT -->|"answer + citation doc-hr-NNN.txt"| AGENT
-    VS -->|"top matching chunks"| FS
-
-    NOTE["No training, no weights change.<br/>Change a document -> re-upload -> answer changes.<br/>Question outside the docs -> nothing retrieved -> refusal"]
-    NOTE -.-> VS
-```
+<img width="3120" height="1086" alt="AI Project#1 - Doc Intel AWS v2 - RAG-Workflow" src="https://github.com/user-attachments/assets/14b06475-1662-4e7c-b934-3ae9215988b4" />
 
 No training step at all: `fetch_documents.py` pulls the OCR texts from the ingestion Blob
 with your Entra identity, `create_agent.py` uploads them (purpose `agents`), builds the
