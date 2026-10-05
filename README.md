@@ -1,6 +1,6 @@
 # HR documents — retrieval-augmented generation (RAG) on Azure
 
-> **New here?** Read **[START-HERE.md](https://github.com/Auxin-io/Azure-Document-Ingestion/blob/main/START-HERE.md)** first. It covers prerequisites, which repo to
+> **New here?** Read **[the Azure-Document-Ingestion README](https://github.com/Auxin-io/Azure-Document-Ingestion#readme)** first. It covers prerequisites, which repo to
 > run in what order, and the shared Azure foundation this repo assumes already exists.
 >
 > This repo is **Track C - RAG** of three ways to give a model knowledge (knowledge in an index, read at question time). It cannot run until
