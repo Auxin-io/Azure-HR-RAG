@@ -1,5 +1,11 @@
 # HR documents — retrieval-augmented generation (RAG) on Azure
 
+> **New here?** Read **[START-HERE.md](https://github.com/Auxin-io/Azure-Document-Ingestion/blob/main/START-HERE.md)** first. It covers prerequisites, which repo to
+> run in what order, and the shared Azure foundation this repo assumes already exists.
+>
+> This repo is **Track C - RAG** of three ways to give a model knowledge (knowledge in an index, read at question time). It cannot run until
+> [Azure-Document-Ingestion](https://github.com/Auxin-io/Azure-Document-Ingestion) has produced the data, and the shared foundation exists.
+
 Answers questions about the ten HR documents (policies and leave requests) by
 **retrieving** the relevant passages at question time and letting
 `gpt-4.1-mini` answer from them, with a citation. No model is trained: the
