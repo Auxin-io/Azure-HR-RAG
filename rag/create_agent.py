@@ -16,6 +16,7 @@ time - change a policy, re-upload the file, the answer changes.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import shutil
 from pathlib import Path
@@ -26,8 +27,14 @@ from azure.identity import AzureCliCredential
 
 HERE = Path(__file__).resolve().parent
 DOCS = HERE.parent / "data" / "hr"
-RG, PROJECT = "docintel-ml-rg", "docintel-finance"
-AGENT_NAME, MODEL, STORE_NAME = "docintel-hr-agent", "gpt-4.1-mini", "hr-documents"
+# Resource names come from the environment so this script works against any
+# deployment of this repo's terraform/ stack. Load them with:
+#   eval "$(terraform -chdir=terraform output -raw agent_env)"
+RG         = os.environ.get("AZURE_RESOURCE_GROUP", "docintel-rag-rg")
+PROJECT    = os.environ.get("FOUNDRY_PROJECT",      "hr")
+AGENT_NAME = os.environ.get("AGENT_NAME",           "hr-agent")
+MODEL      = os.environ.get("AGENT_MODEL",          "gpt-4.1-mini")
+STORE_NAME = os.environ.get("STORE_NAME",           "hr-documents")
 
 INSTRUCTIONS = """You are an HR assistant. You answer questions about the company's HR documents:
 policies (scope, approval, notice periods, review cycle) and leave requests (who, what

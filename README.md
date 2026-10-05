@@ -36,7 +36,7 @@ The diagram below shows the workflow of the project.
 
 No training step at all: `fetch_documents.py` pulls the OCR texts from the ingestion Blob
 with your Entra identity, `create_agent.py` uploads them (purpose `agents`), builds the
-Foundry-managed vector store `hr-documents` and creates `docintel-hr-agent` with the
+Foundry-managed vector store `hr-documents` and creates `hr-agent` with the
 `file_search` tool. At question time the tool retrieves the top chunks, gpt-4.1-mini answers
 with a `doc-hr-NNN.txt` citation, and questions outside the documents are refused.
 
@@ -52,7 +52,7 @@ and Blob Storage only.
 | **Entra ID** | your identity reads the container (Storage Blob Data Contributor) and calls the agents API (Foundry User) |
 | **AI Services account** | hosts the model deployment, the project and the vector store |
 | **Azure OpenAI deployment `gpt-4.1-mini`** | reads the retrieved chunks and writes the answer with a citation |
-| **Foundry project `docintel-finance`** | hosts `docintel-hr-agent` |
+| **Foundry project `<project>`** | hosts `hr-agent` |
 | **Foundry files + vector store `hr-documents`** | the ten texts uploaded; Foundry chunks, embeds and indexes them (managed RAG store) |
 | **Foundry `file_search` tool** | embeds the question, retrieves the matching chunks, feeds them to the model |
 | **Azure Bot Service** (optional, created by Publish) | exposes the agent in Microsoft 365 Copilot |
@@ -64,13 +64,16 @@ ten documents), Azure ML, any endpoint.
 
 ## Prerequisites
 
+This repo is **self-contained**. It does not need the fine-tuning repo or any
+other track deployed - `terraform/` here creates its own resource group, AI
+Services account and Foundry project. It is also the cheapest stack in the
+set: **no GPU quota, no ML workspace, no endpoint, and nothing that bills by
+the hour.**
+
 - The ingestion repo has run (`run_all.sh`), so `curated/documents/doc-hr-*.txt`
-  exist in its Blob container; its Terraform gave you **Storage Blob Data
-  Contributor** there
-- Steps 1 and 5 of **Azure-FineTuning-Foundry-Agent** have run: the AI
-  Services account with `gpt-4.1-mini`, the Foundry project `docintel-finance`
-  and your Foundry User role exist
-- Python 3.11+, `az login`
+  exist in its Blob container
+- Terraform >= 1.9, Python 3.11+, `az login`
+- **Owner** on the subscription (this stack creates role assignments)
 
 ```bash
 python -m venv .venv
@@ -79,6 +82,47 @@ python -m venv .venv
 
 On Windows run from Git Bash with `MSYS_NO_PATHCONV=1 PYTHONIOENCODING=utf-8`
 in front of the Python commands.
+
+---
+
+## Step 0 — infrastructure
+
+```bash
+cd terraform
+terraform init
+terraform apply
+terraform output
+cd ..
+```
+
+`terraform.tfvars` needs three values - the last two are the only thing this
+repo takes from another repository:
+
+```hcl
+name_prefix                 = "yourprefix"
+ingest_storage_account_name = "<ingestion repo's terraform output storage_account>"
+ingest_resource_group_name  = "<ingestion repo's terraform output resource_group>"
+```
+
+Creates, in `<prefix>-rag-rg`: an AI Services account with a `gpt-4.1-mini`
+deployment **and a `text-embedding-3-small` deployment**, a Foundry project,
+and three role assignments - Blob read on the ingestion container so you can
+fetch the documents, plus the two data-plane roles you need to build a vector
+store and run agents.
+
+The embedding deployment is not optional. The managed vector store uses it to
+embed both the chunks and the question; without it, creating the store fails
+and `file_search` has nothing to search.
+
+Then load the resource names the two scripts need:
+
+```bash
+eval "$(terraform -chdir=terraform output -raw agent_env)"
+```
+
+That sets `AZURE_STORAGE_ACCOUNT` too, which `fetch_documents.py` now requires
+- it has no default, because the ingestion storage account name carries a
+random suffix.
 
 ---
 
@@ -108,7 +152,7 @@ What it does:
 1. Uploads the ten files to the Foundry project and creates a **vector
    store** named `hr-documents`. Foundry chunks each file, embeds the chunks
    and builds the search index — that is the "chunk → embed → index" step.
-2. Creates (or updates) the agent `docintel-hr-agent` on `gpt-4.1-mini` with
+2. Creates (or updates) the agent `hr-agent` on `gpt-4.1-mini` with
    the `file_search` tool bound to that store. The instructions require a
    search before every answer, quoting the figure and naming the document.
 3. Asks three questions and reports whether retrieval was used:
@@ -144,8 +188,8 @@ documents change. `--ask "..."` sends your own question.
 Every answer carries a `【…†doc-hr-NNN.txt】` citation — that is the
 retrieved chunk the answer came from.
 
-**Portal:** https://ai.azure.com → New Foundry → project `docintel-finance` →
-Agents → `docintel-hr-agent` → Save as new agent → Playground. The vector
+**Portal:** https://ai.azure.com → New Foundry → project `<project>` →
+Agents → `hr-agent` → Save as new agent → Playground. The vector
 store appears under the agent's *Knowledge*.
 
 **After migrating.** "Save as new agent" copies the agent into the versioned
@@ -159,7 +203,7 @@ portal or run the script below, which also does that. Whenever you change
 MSYS_NO_PATHCONV=1 PYTHONIOENCODING=utf-8 .venv/Scripts/python rag/publish_version.py
 ```
 
-It publishes a new version (`docintel-hr-agent:2`, `:3`, ...) with the same model and
+It publishes a new version (`hr-agent:2`, `:3`, ...) with the same model and
 tools; the playground and Copilot pick up the latest version automatically.
 
 ---
@@ -169,19 +213,19 @@ tools; the playground and Copilot pick up the latest version automatically.
 In the migrated agent click **Publish → Teams and Microsoft 365**, fill in the
 descriptions, keep the generated bot name, and finish. This creates an Azure
 Bot Service (free F0) and a service principal named
-`<ai-services-account>-docintel-finance-docintel-hr-agent-AgentIdentity` that the bot
+`<ai-services-account>-<project>-hr-agent-AgentIdentity` that the bot
 runs as. That identity has no roles until you grant them:
 
 ```bash
-AIS=$(az cognitiveservices account list -g docintel-ml-rg --query "[?kind=='AIServices'].id | [0]" -o tsv)
-AGENT_SP=$(az ad sp list --display-name "$(basename $AIS)-docintel-finance-docintel-hr-agent-AgentIdentity" --query "[0].id" -o tsv)
+AIS=$(az cognitiveservices account list -g <rag-rg> --query "[?kind=='AIServices'].id | [0]" -o tsv)
+AGENT_SP=$(az ad sp list --display-name "$(basename $AIS)-<project>-hr-agent-AgentIdentity" --query "[0].id" -o tsv)
 MSYS_NO_PATHCONV=1 az role assignment create --assignee-object-id $AGENT_SP --assignee-principal-type ServicePrincipal \
   --role 53ca6127-db72-4b80-b1b0-d745d6d5456d --scope $AIS   # Azure AI User / Foundry User
 ```
 
 Until the roles propagate (a few minutes) the agent appears in Copilot but
 replies with nothing. Then: https://copilot.microsoft.com → Agents →
-`docintel-hr-agent` → new chat.
+`hr-agent` → new chat.
 
 ---
 

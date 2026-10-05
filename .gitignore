@@ -1,3 +1,8 @@
 data/hr/
 __pycache__/
 .venv*/
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+terraform/terraform.tfvars

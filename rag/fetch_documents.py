@@ -15,7 +15,15 @@ from pathlib import Path
 from azure.identity import AzureCliCredential
 from azure.storage.blob import BlobServiceClient
 
-ACCOUNT = os.environ.get("AZURE_STORAGE_ACCOUNT", "docintelingestchlo62")
+# No default: the ingestion storage account name carries a random suffix, so
+# any baked-in value is wrong for every deployment but one.
+ACCOUNT = os.environ.get("AZURE_STORAGE_ACCOUNT", "")
+if not ACCOUNT:
+    raise SystemExit(
+        "AZURE_STORAGE_ACCOUNT is not set. It is the ingestion repo's "
+        "`terraform output storage_account`, or load this repo's outputs with: "
+        'eval "$(terraform -chdir=terraform output -raw agent_env)"'
+    )
 CONTAINER, PREFIX = "curated", "documents/doc-hr-"
 OUT = Path(__file__).resolve().parent.parent / "data" / "hr"
 
