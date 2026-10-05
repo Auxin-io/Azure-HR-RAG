@@ -81,6 +81,10 @@ resource "azurerm_cognitive_deployment" "embedding" {
   name                 = var.embedding_model
   cognitive_account_id = azurerm_cognitive_account.ai.id
 
+  # Same 409 RequestConflict rule: two deployments on one account cannot be
+  # created at the same time.
+  depends_on = [azurerm_cognitive_deployment.agent_model]
+
   model {
     format  = "OpenAI"
     name    = var.embedding_model
@@ -109,9 +113,14 @@ resource "azapi_resource" "project" {
     properties = {}
   }
 
-  # The embedding deployment must exist before anything builds a vector store
-  # in this project.
-  depends_on = [azurerm_cognitive_deployment.embedding]
+  # Both deployments must land first. The embedding one because nothing can
+  # build a vector store in this project without it - and both of them because
+  # Azure permits one mutating operation at a time per Cognitive Services
+  # account and rejects concurrent ones with 409 RequestConflict.
+  depends_on = [
+    azurerm_cognitive_deployment.embedding,
+    azurerm_cognitive_deployment.agent_model,
+  ]
 }
 
 # ------------------------------------------------------------------ roles ---
