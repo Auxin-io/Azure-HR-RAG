@@ -38,6 +38,24 @@ variable "embedding_model_version" {
   default = "1"
 }
 
+# Standard caps at 350 TPM for this model in eastus and fills up fast - a few
+# soft-deleted AI Services accounts hold their quota until purged and will
+# exhaust it on their own. GlobalStandard caps at 5000. Both tiers serve the
+# same model; this one just is not scarce.
+variable "embedding_sku" {
+  description = "Deployment tier for the embedding model. GlobalStandard has far more quota headroom than Standard."
+  type        = string
+  default     = "GlobalStandard"
+}
+
+# Ten documents of ~10 KB. The vector store embeds them once and then only
+# embeds each question, so this is already generous.
+variable "embedding_capacity" {
+  description = "Thousands of tokens per minute for the embedding deployment."
+  type        = number
+  default     = 50
+}
+
 variable "project_name" {
   description = "Foundry project that holds the HR agent and its vector store. Created by this stack."
   type        = string
