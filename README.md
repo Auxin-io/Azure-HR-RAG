@@ -1,15 +1,11 @@
-# HR documents — retrieval-augmented generation (RAG) on Azure
+# Retrieval-Augmented Generation (RAG) on Azure
 
-> **New here?** Read **[the Azure-Document-Ingestion README](https://github.com/Auxin-io/Azure-Document-Ingestion#readme)** first. It covers prerequisites, which repo to
-> run in what order, and the shared Azure foundation this repo assumes already exists.
->
-> This repo is **Track C - RAG** of three ways to give a model knowledge (knowledge in an index, read at question time). It cannot run until
-> [Azure-Document-Ingestion](https://github.com/Auxin-io/Azure-Document-Ingestion) has produced the data, and the shared foundation exists.
+> Read **[Azure-Document-Ingestion](https://github.com/Auxin-io/Azure-Document-Ingestion#readme)** first. It covers prerequisites. It has produced the data, and the shared foundation exists.
 
-Answers questions about the ten HR documents (policies and leave requests) by
+In this project Answers questions about the ten HR documents (policies and leave requests) by
 **retrieving** the relevant passages at question time and letting
-`gpt-4.1-mini` answer from them, with a citation. No model is trained: the
-knowledge lives in an index, not in weights. Change a document, re-index,
+`gpt-4.1-mini` answer from them, with a citation. The
+knowledge lives in an index. Change a document, re-index,
 the answer changes.
 
 ```
@@ -18,13 +14,8 @@ Blob curated/documents/doc-hr-*.txt  ->  Foundry vector store (chunk + embed)  -
 User -> Foundry agent (gpt-4.1-mini) -> file_search tool -> matching chunks -> answer + citation
 ```
 
-This is the third of three ways the project gives a model knowledge:
-
-| Dataset | Method | Where the knowledge lives | Repo |
-|---|---|---|---|
-| Finance | fine-tune Qwen2.5-3B (QLoRA) | adapter weights | Azure-FineTuning-Foundry-Agent |
-| Employee | new model trained from scratch | the model's weights | Azure-Employee-Pretraining |
-| HR | RAG | an index, read at inference | this repo |
+Training data comes from the
+[Azure-Document-Ingestion](https://github.com/Auxin-io/Azure-Document-Ingestion).
 
 ---
 
@@ -34,16 +25,13 @@ The diagram below shows the workflow of the project.
 
 <img width="3120" height="1086" alt="AI Project#1 - Doc Intel AWS v2 - RAG-Workflow" src="https://github.com/user-attachments/assets/14b06475-1662-4e7c-b934-3ae9215988b4" />
 
-No training step at all: `fetch_documents.py` pulls the OCR texts from the ingestion Blob
+`fetch_documents.py` pulls the OCR texts from the ingestion Blob
 with your Entra identity, `create_agent.py` uploads them (purpose `agents`), builds the
 Foundry-managed vector store `hr-documents` and creates `hr-agent` with the
 `file_search` tool. At question time the tool retrieves the top chunks, gpt-4.1-mini answers
 with a `doc-hr-NNN.txt` citation, and questions outside the documents are refused.
 
 ## Azure services used
-
-No training compute and no endpoint: this track is the AI Services account
-and Blob Storage only.
 
 | Service | What it does in this project |
 |---|---|
@@ -57,35 +45,21 @@ and Blob Storage only.
 | **Foundry `file_search` tool** | embeds the question, retrieves the matching chunks, feeds them to the model |
 | **Azure Bot Service** (optional, created by Publish) | exposes the agent in Microsoft 365 Copilot |
 
-Not used, on purpose: Azure AI Search (the managed vector store is enough for
-ten documents), Azure ML, any endpoint.
-
 ---
 
 ## Prerequisites
 
-This repo is **self-contained**. It does not need the fine-tuning repo or any
-other track deployed - `terraform/` here creates its own resource group, AI
-Services account and Foundry project. It is also the cheapest stack in the
-set: **no GPU quota, no ML workspace, no endpoint, and nothing that bills by
-the hour.**
-
-- The ingestion repo has run (`run_all.sh`), so `curated/documents/doc-hr-*.txt`
-  exist in its Blob container
-- Terraform >= 1.9, Python 3.11+, `az login`
-- **Owner** on the subscription (this stack creates role assignments)
+- Azure CLI 2.89+, Terraform >= 1.9; Python 3.11+
+- `az login` into a subscription where you are **Owner** (Terraform and the
+  steps below assign roles)
 
 ```bash
-python -m venv .venv
-.venv/Scripts/pip install -r rag/requirements.txt
+az login
 ```
-
-On Windows run from Git Bash with `MSYS_NO_PATHCONV=1 PYTHONIOENCODING=utf-8`
-in front of the Python commands.
 
 ---
 
-## Step 0 — infrastructure
+## Step 1 — infrastructure
 
 ```bash
 cd terraform
@@ -95,24 +69,11 @@ terraform output
 cd ..
 ```
 
-`terraform.tfvars` needs three values - the last two are the only thing this
-repo takes from another repository:
-
-```hcl
-name_prefix                 = "yourprefix"
-ingest_storage_account_name = "<ingestion repo's terraform output storage_account>"
-ingest_resource_group_name  = "<ingestion repo's terraform output resource_group>"
-```
-
 Creates, in `<prefix>-rag-rg`: an AI Services account with a `gpt-4.1-mini`
 deployment **and a `text-embedding-3-small` deployment**, a Foundry project,
 and three role assignments - Blob read on the ingestion container so you can
 fetch the documents, plus the two data-plane roles you need to build a vector
 store and run agents.
-
-The embedding deployment is not optional. The managed vector store uses it to
-embed both the chunks and the question; without it, creating the store fails
-and `file_search` has nothing to search.
 
 Then load the resource names the two scripts need:
 
@@ -129,7 +90,10 @@ random suffix.
 ## Step 1 — fetch the documents
 
 ```bash
-python rag/fetch_documents.py        # -> data/hr/doc-hr-001.txt ... doc-hr-010.txt
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r rag/requirements.txt
+python3 rag/fetch_documents.py        # -> data/hr/doc-hr-001.txt ... doc-hr-010.txt
 ```
 
 Downloads the OCR text the ingestion repo produced (Document Intelligence
@@ -144,7 +108,7 @@ during development.
 ## Step 2 — index and create the agent
 
 ```bash
-python rag/create_agent.py
+python3 rag/create_agent.py
 ```
 
 What it does:
@@ -173,6 +137,18 @@ A  I can only answer questions related to the company's HR documents ...
 The store is reused on later runs; `--reindex` rebuilds it after the
 documents change. `--ask "..."` sends your own question.
 
+**Portal:** https://ai.azure.com → New Foundry → project `<project>` →
+Agents → `hr-agent` → Save as new agent → Playground. The vector
+store appears under the agent's *Knowledge*.
+
+---
+
+## Step 3 — publish to Microsoft 365 Copilot (optional)
+
+In the agent click **Publish → Teams and Microsoft 365**, fill in the
+descriptions, keep the generated bot name, and finish. This creates an Azure
+Bot Service (free F0) and a service principal.
+
 ---
 
 ## Test questions
@@ -188,78 +164,16 @@ documents change. `--ask "..."` sends your own question.
 Every answer carries a `【…†doc-hr-NNN.txt】` citation — that is the
 retrieved chunk the answer came from.
 
-**Portal:** https://ai.azure.com → New Foundry → project `<project>` →
-Agents → `hr-agent` → Save as new agent → Playground. The vector
-store appears under the agent's *Knowledge*.
-
-**After migrating.** "Save as new agent" copies the agent into the versioned
-agent API; from then on the copy is independent of the classic one the script
-created. The portal also adds a `web_search` tool to the copy, which can let
-gpt-4.1-mini answer from the web instead of the model - remove it in the
-portal or run the script below, which also does that. Whenever you change
-`INSTRUCTIONS` in `rag/create_agent.py`, push them to the migrated copy with:
-
-```bash
-MSYS_NO_PATHCONV=1 PYTHONIOENCODING=utf-8 .venv/Scripts/python rag/publish_version.py
-```
-
-It publishes a new version (`hr-agent:2`, `:3`, ...) with the same model and
-tools; the playground and Copilot pick up the latest version automatically.
-
 ---
-
-## Step 3 — publish to Microsoft 365 Copilot (optional)
-
-In the migrated agent click **Publish → Teams and Microsoft 365**, fill in the
-descriptions, keep the generated bot name, and finish. This creates an Azure
-Bot Service (free F0) and a service principal named
-`<ai-services-account>-<project>-hr-agent-AgentIdentity` that the bot
-runs as. That identity has no roles until you grant them:
-
-```bash
-AIS=$(az cognitiveservices account list -g <rag-rg> --query "[?kind=='AIServices'].id | [0]" -o tsv)
-AGENT_SP=$(az ad sp list --display-name "$(basename $AIS)-<project>-hr-agent-AgentIdentity" --query "[0].id" -o tsv)
-MSYS_NO_PATHCONV=1 az role assignment create --assignee-object-id $AGENT_SP --assignee-principal-type ServicePrincipal \
-  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d --scope $AIS   # Azure AI User / Foundry User
-```
-
-Until the roles propagate (a few minutes) the agent appears in Copilot but
-replies with nothing. Then: https://copilot.microsoft.com → Agents →
-`hr-agent` → new chat.
-
----
-
-## How it differs from the other two tracks
-
-| | Fine-tune (finance) | From scratch (employee) | RAG (HR) |
-|---|---|---|---|
-| Training run | 3 h on a T4 | 77 s on a T4 | none |
-| Knowledge update | retrain the adapter | retrain the model | re-upload the file |
-| Answers cite a source | no | no | yes |
-| Can answer about a document it never saw | no | no | yes, once indexed |
-| Works with a changing corpus | poorly | poorly | yes |
-| Cost at idle | endpoint per hour | endpoint per hour | vector store storage only |
-
-RAG is the right tool when the corpus changes or must be cited; training is
-the right tool when the knowledge must be available with no retrieval step,
-or must be served by a model you fully own.
 
 ---
 
 ## Cost and teardown
 
-Nothing here runs by the hour. The vector store bills for storage (the first
-GB is free; these files are 10 KB). `gpt-4.1-mini` bills per token.
+Teradown the project by terraform destroy
 
 ```bash
-python - <<'EOF'
-from rag.create_agent import *
-c = AgentsClient(endpoint=project_endpoint(), credential=AzureCliCredential())
-for s in c.vector_stores.list():
-    if s.name == STORE_NAME: c.vector_stores.delete(s.id)
-for a in c.list_agents():
-    if a.name == AGENT_NAME: c.delete_agent(a.id)
-EOF
+cd terraform && terraform destroy 
 ```
 
 ---
